@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 
 # =========================
 # CONFIGURAÇÃO
@@ -10,12 +11,58 @@ st.title("🤖 Agente NR-12 Inteligente")
 st.write("Sistema analítico NR-12 completo")
 
 # =========================
-# CARREGAR DADOS
+# 📘 MENU LATERAL
+# =========================
+
+st.sidebar.title("📘 Guia Rápido")
+
+st.sidebar.markdown("""
+### Exemplos de Consulta
+
+🔧 **PWT / Inventário**
+56000
+
+🏢 **Fornecedor**
+vetor
+
+🏭 **Centro de Custo**
+cc 174/4
+
+📊 **Status AR**
+status ar
+
+🚨 **Máquinas Críticas**
+máquinas críticas
+
+📅 **Mês**
+julho
+""")
+
+st.sidebar.info("""
+💡 Dica
+
+Utilize sempre:
+
+✅ cc 174/4
+
+para consultar Centros de Custo.
+
+Isso evita conflito com consultas de PWT.
+
+Você pode pesquisar por PWT, Inventário, Fornecedor, Centro de Custo, Mês, Máquinas críticas ou Status AR.
+""")
+
+# =========================
+# BASE PRINCIPAL
 # =========================
 @st.cache_data
 def carregar_dados():
+
     try:
-        df = pd.read_excel("Banco de Dados PWBI 2026.xlsx")
+
+        caminho_base = r"C:\Users\VITCAMP\OneDrive - Daimler Truck\TM_ NR12 - 2023 - 2024 - General\Agente NR12 - Base Oficial\Banco de Dados PWBI.xlsx"
+
+        df = pd.read_excel(caminho_base)
 
         df.columns = df.columns.astype(str).str.strip().str.upper()
         df = df.dropna(how="all")
@@ -32,13 +79,39 @@ def carregar_dados():
         return df
 
     except Exception as e:
-        st.error(f"Erro ao carregar base: {e}")
+        st.error(f"Erro base principal: {e}")
+        return pd.DataFrame()
+
+# =========================
+# BASE CENTRO DE CUSTO
+# =========================
+@st.cache_data
+def carregar_cc():
+
+    try:
+
+        caminho_cc = r"C:\Users\VITCAMP\OneDrive - Daimler Truck\TM_ NR12 - 2023 - 2024 - General\Agente NR12 - Base Oficial\base_cc.xlsx"
+
+        df_cc = pd.read_excel(caminho_cc)
+
+        df_cc.columns = (
+            df_cc.columns
+            .astype(str)
+            .str.strip()
+            .str.upper()
+        )
+
+        return df_cc
+
+    except Exception as e:
+        st.warning(f"Erro base CC: {e}")
         return pd.DataFrame()
 
 df = carregar_dados()
+df_cc = carregar_cc()
 
 # =========================
-# FUNÇÕES DE TRATAMENTO
+# TRATAMENTO
 # =========================
 def tratar(valor):
     if pd.isna(valor) or str(valor).strip().lower() in ["nan", ""]:
@@ -46,7 +119,7 @@ def tratar(valor):
     return str(valor).strip()
 
 def tratar_status(valor):
-    if pd.isna(valor) or str(valor).strip().lower() in ["nan", ""]:
+    if pd.isna(valor):
         return "Não avaliado"
     return str(valor).strip()
 
@@ -59,7 +132,7 @@ def formatar_data(valor):
         return str(valor)
 
 # =========================
-# MEMÓRIA CHAT
+# MEMÓRIA
 # =========================
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -68,15 +141,178 @@ if "messages" not in st.session_state:
 # FUNÇÃO PRINCIPAL
 # =========================
 def responder(pergunta):
+
     p = pergunta.lower()
 
     meses = {
-        "janeiro": 1, "fevereiro": 2, "março": 3, "abril": 4,
-        "maio": 5, "junho": 6, "julho": 7, "agosto": 8,
-        "setembro": 9, "outubro": 10, "novembro": 11, "dezembro": 12
+        "janeiro":1,"fevereiro":2,"março":3,"abril":4,
+        "maio":5,"junho":6,"julho":7,"agosto":8,
+        "setembro":9,"outubro":10,"novembro":11,"dezembro":12
     }
 
     try:
+        
+        # =========================
+        # 🏢 CENTRO DE CUSTO
+        # =========================
+        if not df_cc.empty and (
+             "cc" in p
+            or "centro de custo" in p
+        ):
+
+            pesquisa_cc = (
+                p.lower()
+                .replace("centro de custo", "")
+                .replace("cc", "")
+                .replace("c.c", "")
+                .replace("/", "")
+                .replace(" ", "")
+                .replace(".0", "")
+                .strip()
+            )
+
+            for _, row in df_cc.iterrows():
+
+                cc = (
+                    str(row.get("CENTRO DE CUSTO"))
+                    .replace(".0", "")
+                    .strip()
+                )
+
+                if cc == pesquisa_cc:
+
+                    # Exibição interna
+                    cc_exibicao = cc
+
+                    if len(cc) == 4 and cc.isdigit():
+                        cc_exibicao = f"{cc[:3]}/{cc[-1]}"
+
+                    # Planejador principal
+                    planejador_cols = [
+                        "PLANEJADOR",
+                        "PLANEJADOR 2",
+                        "PLANEJADOR 3",
+                        "PLANEJADOR 4",
+                        "PLANEJADOR 5"
+                    ]
+
+                    planejador = next(
+                        (
+                            tratar(row[col])
+                            for col in planejador_cols
+                            if col in df_cc.columns and pd.notna(row[col])
+                        ),
+                        "informação faltante"
+                    )
+
+                    # Supervisor principal
+                    supervisor_cols = [
+                        "SUPERVISOR",
+                        "SUPERVISOR 2",
+                        "SUPERVISOR 3"
+                    ]
+
+                    supervisor = next(
+                        (
+                            tratar(row[col])
+                            for col in supervisor_cols
+                            if col in df_cc.columns and pd.notna(row[col])
+                        ),
+                        "informação faltante"
+                    )
+
+                    predio = tratar(row.get("PREDIO"))
+
+                    try:
+                        predio = str(int(float(predio)))
+                    except:
+                        pass
+
+                    total_maquinas = 0
+
+                    if "CENTRO DE CUSTO" in df.columns:
+
+                        cc_base = (
+                            df["CENTRO DE CUSTO"]
+                            .fillna("")
+                            .astype(str)
+                            .str.upper()
+                            .str.replace("CC", "", regex=False)
+                            .str.replace("/", "", regex=False)
+                            .str.replace(".0", "", regex=False)
+                            .str.replace(" ", "", regex=False)
+                            .str.strip()
+                        )
+
+                        cc_pesquisa = (
+                            str(cc)
+                            .upper()
+                            .replace("CC", "")
+                            .replace("/", "")
+                            .replace(".0", "")
+                            .replace(" ", "")
+                            .strip()
+                        )   
+                    
+                        total_maquinas = (cc_base == cc_pesquisa).sum()
+
+                    return f"""
+🏢 **C.C {cc_exibicao}**
+
+📍 Prédio:
+{predio}
+
+👤 Supervisor:
+{supervisor}
+
+🧠 Planejador:
+{planejador}
+
+📊 Máquinas cadastradas:
+{total_maquinas}
+"""
+        # =========================
+        # 🔴 MÁQUINAS CRÍTICAS
+        # =========================
+        if "criticas" in p or "críticas" in p:
+
+            hoje = pd.Timestamp.now()
+            col_pwt = "SICK" if "SICK" in df.columns else "INVENTÁRIO"
+
+            atrasadas = df[
+                (df["ADEQUAÇÃO PREVISTA"].notna()) &
+                (df["ADEQUAÇÃO PREVISTA"] < hoje) &
+                (df["ADEQUAÇÃO REALIZADA"].isna())
+            ]
+
+            lista_atrasadas = "\n".join(
+                [f":red[{x}]" for x in atrasadas[col_pwt].dropna().astype(str).head(15)]
+            )
+
+            status = df["STATUS AR :"].fillna("").astype(str).str.strip()
+            nao = df[status == ""]
+
+            lista_nao = "\n".join(
+                [f":red[{x}]" for x in nao[col_pwt].dropna().astype(str).head(15)]
+            )
+
+            return f"""
+🚨 **MÁQUINAS CRÍTICAS**
+
+🔴 Máquinas ATRASADAS:
+{len(atrasadas)}
+
+PWTs:
+{lista_atrasadas if lista_atrasadas else "Nenhuma"}
+
+---
+
+⚠️ Máquinas NÃO AVALIADAS:
+{len(nao)}
+
+PWTs:
+{lista_nao if lista_nao else "Nenhuma"}
+"""
 
         # =========================
         # 📅 MÊS
@@ -110,27 +346,42 @@ def responder(pergunta):
 
 ---
 
-✅ **PWT adequadas:**
+✅ PWT adequadas:
 {lista_ok if lista_ok else "Nenhum"}
 
 ---
 
-🔴 **PWT NÃO adequadas:**
+🔴 PWT não adequadas:
 {lista_pendente if lista_pendente else "Nenhum"}
 """
-
+            
         # =========================
-        # 🏢 FORNECEDOR (VISUAL NOVO ✅)
+        # 🏢 FORNECEDOR
         # =========================
         for fornecedor in df["FORNECEDOR"].dropna().unique():
 
-            if str(fornecedor).lower() in p:
+             if str(fornecedor).lower() in p:
 
                 df_f = df[df["FORNECEDOR"] == fornecedor]
 
                 status = df_f["STATUS AR :"].fillna("").astype(str).str.upper()
 
-                return f"""
+                conta_sap = "informação faltante"
+                po = "informação faltante"
+
+                if "CONTA SAP" in df.columns:
+                    valores_sap = df_f["CONTA SAP"].dropna()
+
+                    if len(valores_sap) > 0:
+                        conta_sap = str(valores_sap.iloc[0])
+
+                if "PO" in df.columns:
+                    valores_po = df_f["PO"].dropna()
+
+                    if len(valores_po) > 0:
+                        po = str(valores_po.iloc[0])
+
+                        return f"""
 🏢 **FORNECEDOR: {fornecedor.upper()}**
 
 📊 Total de máquinas:
@@ -149,14 +400,14 @@ def responder(pergunta):
 {df_f["ADEQUAÇÃO REALIZADA"].notna().sum()}
 
 💼 Conta SAP:
-{tratar(df_f.get("CONTA SAP").dropna().iloc[0]) if "CONTA SAP" in df.columns and df_f["CONTA SAP"].notna().any() else "informação faltante"}
+{conta_sap}
 
 📄 PO:
-{tratar(df_f.get("PO").dropna().iloc[0]) if "PO" in df.columns and df_f["PO"].notna().any() else "informação faltante"}
+{po}
 """
 
         # =========================
-        # 📊 STATUS AR (LISTA ✅)
+        # 📊 STATUS AR
         # =========================
         if "status ar" in p:
 
@@ -177,18 +428,20 @@ def responder(pergunta):
 ⏳ Não avaliadas:
 {(status == "").sum()}
 """
-
+        
         # =========================
-        # 🔎 PWT (VISUAL MELHORADO ✅)
+        # 🔎 BUSCA PWT + INVENTÁRIO
         # =========================
-        for palavra in p.split():
-            if palavra.isnumeric():
+        for termo in p.split():
 
-                for _, row in df.iterrows():
-                    if palavra in " ".join([str(v) for v in row.values]):
+            for _, row in df.iterrows():
 
-                        return f"""
-🔎 **PWT {palavra}**
+                    valores = " ".join([str(v) for v in row.values]).lower()
+
+                    if termo in valores:
+
+                     return f"""
+🔎 **PWT {termo}**
 
 🛠️ Máquina:
 {tratar(row.get("NOME DA MAQUINA"))}
@@ -221,7 +474,7 @@ Não avaliado
 informação faltante
 """
 
-        return "🤖 Não consegui interpretar. Tente mês, fornecedor, PWT ou status AR."
+        return "🤖 Não consegui interpretar."
 
     except Exception as e:
         return f"⚠️ Erro: {e}"
