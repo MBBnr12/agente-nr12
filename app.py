@@ -20,22 +20,25 @@ st.sidebar.markdown("""
 ### Exemplos de Consulta
 
 🔧 **PWT / Inventário**
-56000
+EX: 56000
 
 🏢 **Fornecedor**
-vetor
+EX: Vetor
 
 🏭 **Centro de Custo**
-cc 174/4
+EX: cc 174/4
 
 📊 **Status AR**
-status ar
+EX: Status AR
 
 🚨 **Máquinas Críticas**
-máquinas críticas
+EX: Máquinas críticas
 
 📅 **Mês**
-julho
+EX: Julho
+
+💰 **Relatório Financeiro**
+EX: Relatorio financeiro
 """)
 
 st.sidebar.info("""
@@ -60,9 +63,7 @@ def carregar_dados():
 
     try:
 
-        caminho_base = r"C:\Users\VITCAMP\OneDrive - Daimler Truck\TM_ NR12 - 2023 - 2024 - General\Agente NR12 - Base Oficial\Banco de Dados PWBI.xlsx"
-
-        df = pd.read_excel(caminho_base)
+        df = pd.read_excel("Banco de Dados PWBI.xlsx")
 
         df.columns = df.columns.astype(str).str.strip().str.upper()
         df = df.dropna(how="all")
@@ -90,9 +91,7 @@ def carregar_cc():
 
     try:
 
-        caminho_cc = r"C:\Users\VITCAMP\OneDrive - Daimler Truck\TM_ NR12 - 2023 - 2024 - General\Agente NR12 - Base Oficial\base_cc.xlsx"
-
-        df_cc = pd.read_excel(caminho_cc)
+        df_cc = pd.read_excel("base_cc.xlsx")
 
         df_cc.columns = (
             df_cc.columns
@@ -433,52 +432,116 @@ PWTs:
         # 🔎 BUSCA PWT + INVENTÁRIO
         # =========================
         for termo in p.split():
-
+    
             for _, row in df.iterrows():
-
-                    valores = " ".join([str(v) for v in row.values]).lower()
-
-                    if termo in valores:
-
-                     return f"""
+        
+                valores = " ".join([str(v) for v in row.values]).lower()
+        
+                if termo in valores:
+        
+                    return f"""
 🔎 **PWT {termo}**
-
+        
 🛠️ Máquina:
 {tratar(row.get("NOME DA MAQUINA"))}
-
+        
 🏢 Centro de Custo:
 {tratar(row.get("CENTRO DE CUSTO"))}
-
+        
 🤝 Fornecedor:
 {tratar(row.get("FORNECEDOR"))}
-
+        
 ✅ Adequada?
 {"Sim" if pd.notna(row.get("ADEQUAÇÃO REALIZADA")) else "Não"}
 
 📐 Pré-projeto:
 {formatar_data(row.get("PRÉ PROJETO ENTREGUE EM:"))}
-
+        
 📄 NF:
 {tratar(row.get("NF"))}
-
+        
 📊 Status AR:
 {tratar_status(row.get("STATUS AR :"))}
-
+        
 📅 Data AR Inicial:
 {formatar_data(row.get("AR ENTREGUE EM:"))}
-
+        
 📄 AR Final:
 Não avaliado
-
+        
 📅 Data AR Final:
 informação faltante
 """
+        # =========================
+        # 💰 RELATÓRIO FINANCEIRO
+        # =========================
+        if "relatório financeiro" in p or "relatorio financeiro" in p:
 
+            resultado = "💰 **RELATÓRIO FINANCEIRO NR-12**\n\n"
+
+            meses_nomes = {
+                1: "JANEIRO",
+                2: "FEVEREIRO",
+                3: "MARÇO",
+                4: "ABRIL",
+                5: "MAIO",
+                6: "JUNHO",
+                7: "JULHO",
+                8: "AGOSTO",
+                9: "SETEMBRO",
+                10: "OUTUBRO",
+                11: "NOVEMBRO",
+                12: "DEZEMBRO"
+            }
+
+            meses_existentes = sorted(
+                df["ADEQUAÇÃO PREVISTA"]
+                .dropna()
+                .dt.month
+                .unique()
+            )
+
+            for mes in meses_existentes:
+
+                nome_mes = meses_nomes.get(mes, f"MÊS {mes}")
+
+                df_mes = df[
+                    (df["ADEQUAÇÃO PREVISTA"].notna()) &
+                    (df["ADEQUAÇÃO PREVISTA"].dt.month == mes)
+                ]
+
+                soma_10 = pd.to_numeric(
+                    df_mes["10% LAUDO"],
+                    errors="coerce"
+                ).fillna(0).sum()
+
+                soma_90 = pd.to_numeric(
+                    df_mes["90% MATERIAL"],
+                    errors="coerce"
+                ).fillna(0).sum()
+
+                total_previsto = soma_10 + soma_90
+
+                resultado += f"""
+📅 **{nome_mes}/2026**
+
+💵 Soma dos 10% Laudo:
+R$ {soma_10:,.2f}
+
+💵 Soma dos 90% Material:
+R$ {soma_90:,.2f}
+
+📊 Total Previsto:
+R$ {total_previsto:,.2f}
+
+--------------------------------
+
+"""
+            return resultado
+        
         return "🤖 Não consegui interpretar."
-
     except Exception as e:
         return f"⚠️ Erro: {e}"
-
 # =========================
 # CHAT
 # =========================
